@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Learning AI</title>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.18.6/babel.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow-x: hidden;
+        }
+        .app-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+        .app-header {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+        .question-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .question-card {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 8px;
+            min-width: 200px;
+            max-width: 250px;
+            flex-shrink: 0;
+            box-sizing: border-box;
+            font-size: 14px; /* Reduced font size */
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px; /* Reduced font size */
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.selected {
+            border: 2px solid #28a745;
+            background: #28a745;
+        }
+        .video-list {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .video-list a {
+            display: block;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const YOUTUBE_API_KEY = "AIzaSyBInmcrHvbRjr2ZKlJ24YzWXwEleRS_xrM";
+
+        // Функция для декодирования HTML-сущностей
+        const decodeHTML = (html) => {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            return doc.body.textContent || "";
+        };
+
+        // Генерация случайных вопросов по грамматике и орфографии
+        const generateGrammarQuestions = () => {
+            return [
+                {
+                    question: "How do you say 'I have been' in the past perfect tense?",
+                    options: ["I had been", "I have been", "I was being", "I was"],
+                    correct: "I had been"
+                },
+                {
+                    question: "Which of the following is the correct plural form of 'child'?",
+                    options: ["children", "childs", "childes", "childern"],
+                    correct: "children"
+                },
+                {
+                    question: "What is the correct spelling of this word in English: 'accomodation'?",
+                    options: ["accommodation", "acommodation", "accomodation", "acomodation"],
+                    correct: "accommodation"
+                },
+                {
+                    question: "Which word is a synonym of 'happy'?",
+                    options: ["sad", "joyful", "angry", "lonely"],
+                    correct: "joyful"
+                },
+                {
+                    question: "What does the word 'advice' mean?",
+                    options: ["A suggestion", "A piece of advice", "A decision", "An order"],
+                    correct: "A suggestion"
+                }
+            ];
+        };
+
+        // Функция для получения вопросов из API
+        const fetchQuestions = async () => {
+            const response = await fetch("https://opentdb.com/api.php?amount=5&type=multiple&category=9");
+            const data = await response.json();
+            return data.results.map(q => ({
+                question: decodeHTML(q.question),
+                options: q.incorrect_answers.concat(q.correct_answer).map(decodeHTML).sort(() => Math.random() - 0.5),
+                correct: decodeHTML(q.correct_answer),
+            }));
+        };
+
+        // Функция для получения видео с YouTube
+        const fetchYoutubeVideos = async (query, score) => {
+            const durationFilter = getVideoDurationFilter(score);
+            let videoDuration = "";
+            if (durationFilter === "short") {
+                videoDuration = "short";
+            } else if (durationFilter === "medium") {
+                videoDuration = "medium";
+            } else if (durationFilter === "long") {
+                videoDuration = "long";
+            }
+
+            const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${YOUTUBE_API_KEY}&maxResults=5&relevanceLanguage=en&type=video&videoDuration=${videoDuration}`);
+            const data = await response.json();
+            return data.items || [];
+        };
+
+        // Функция для фильтрации видео по длительности
+        const getVideoDurationFilter = (score) => {
+            if (score >= 7) {
+                return "long"; // Длительные видео (больше 20 минут)
+            } else if (score >= 4) {
+                return "medium"; // Средней длительности видео (от 4 до 20 минут)
+            } else {
+                return "short"; // Короткие видео (меньше 4 минут)
+            }
+        };
+
+        function App() {
+            const [userInterests, setUserInterests] = useState("");
+            const [videos, setVideos] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [questions, setQuestions] = useState([]);
+            const [answers, setAnswers] = useState({});
+            const [score, setScore] = useState(0);
+            const [isTestCompleted, setIsTestCompleted] = useState(false);
+
+            useEffect(() => {
+                const grammarQuestions = generateGrammarQuestions();
+                fetchQuestions().then(apiQuestions => {
+                    const allQuestions = [...grammarQuestions, ...apiQuestions];
+                    setQuestions(allQuestions);
+                });
+            }, []);
+
+            const handleSearchVideos = async () => {
+                if (userInterests.trim()) {
+                    setLoading(true);
+                    const query = `${userInterests} English learning`;
+                    const videoResults = await fetchYoutubeVideos(query, score);
+                    setVideos(videoResults);
+                    setLoading(false);
+                }
+            };
+
+            const handleAnswer = (index, option) => {
+                if (!isTestCompleted && !answers[index]) {
+                    setAnswers(prev => ({ ...prev, [index]: option }));
+                    if (questions[index].correct === option) {
+                        setScore(prevScore => prevScore + 1);
+                    }
+                }
+            };
+
+            const handleTestCompletion = () => {
+                setIsTestCompleted(true);
+            };
+
+            return (
+                <div className="app-container">
+                    <header className="app-header">
+                        <h1>English Learning AI</h1>
+                    </header>
+                    <div>
+                        <h2>English Test</h2>
+                        {!isTestCompleted ? (
+                            <div className="question-container">
+                                {questions.map((q, index) => (
+                                    <div key={index} className="question-card">
+                                        <p>{q.question}</p>
+                                        {q.options.map((option, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => handleAnswer(index, option)}
+                                                className={answers[index] === option ? "selected" : ""}
+                                            >
+                                                {option}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div>
+                                <h3>Test Completed!</h3>
+                                <p>Your score: {score}</p>
+                            </div>
+                        )}
+                        <button onClick={handleTestCompletion} disabled={isTestCompleted}>
+                            Finish Test
+                        </button>
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Enter your interests"
+                        value={userInterests}
+                        onChange={(e) => setUserInterests(e.target.value)}
+                    />
+                    <button onClick={handleSearchVideos} disabled={loading}>
+                        {loading ? "Loading..." : "Find Videos"}
+                    </button>
+                    <div className="video-list">
+                        {videos.length > 0 ? (
+                            videos.map((video, index) => (
+                                <div key={index}>
+                                    <a href={`https://www.youtube.com/watch?v=${video.id.videoId}`} target="_blank" rel="noopener noreferrer">
+                                        {video.snippet.title}
+                                    </a>
+                                </div>
+                            ))
+                        ) : (
+                            <p>No videos found.</p>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+</body>
+</html>
